@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alitop - Most Visited Websites</title>
+    <!-- Include Brython -->
+    <script src="https://cdn.jsdelivr.net/npm/brython@3.10.5/brython.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/brython@3.10.5/brython_stdlib.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .search-bar {
+            text-align: right;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+        }
+        .search-bar input {
+            margin-right: 5px;
+        }
+        .search-bar a {
+            display: block;
+            margin-top: 5px;
+        }
+        .link-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .link-table tr {
+            border-bottom: 1px solid #ddd;
+        }
+        .link-table td {
+            padding: 10px 0;
+        }
+        .visit-count {
+            text-align: right;
+            color: #666;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+        .modal-content {
+            background-color: white;
+            margin: 15% auto;
+            padding: 20px;
+            border-radius: 5px;
+            width: 60%;
+            max-width: 500px;
+        }
+        .close {
+            float: right;
+            cursor: pointer;
+            font-size: 24px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+        }
+        button {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        /* Specific style for search button */
+        #search-button {
+            background-color: #e6e6e6; /* Dirty white color */
+            color: #333; /* Darker text for better contrast */
+        }
+        #search-button:hover {
+            background-color: #d9d9d9; /* Slightly darker on hover */
+        }
+    </style>
+</head>
+<body onload="brython()">
+    <div class="header">
+        <h1>Alitop.com</h1>
+        <div class="search-bar">
+            <input type="text" id="search-input" placeholder="Search term">
+            <button id="search-button" style="background-color: #e6e6e6; color: #333;">Search</button>
+            <div style="width: 100%; text-align: right;">
+                <a href="#" id="upload-link">Upload link</a>
+            </div>
+        </div>
+    </div>
+    
+    <h2>Most Visited Websites in <span id="current-year"></span></h2>
+    
+    <table class="link-table" id="links-table">
+        <!-- Links will be populated here by Brython -->
+    </table>
+    
+    <!-- Modal for adding new links -->
+    <div id="add-link-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" id="close-modal">&times;</span>
+            <h2>Add New Link</h2>
+            <div class="form-group">
+                <label for="link-title">Title:</label>
+                <input type="text" id="link-title" required>
+            </div>
+            <div class="form-group">
+                <label for="link-url">URL:</label>
+                <input type="url" id="link-url" required>
+            </div>
+            <div class="form-group">
+                <label for="link-description">Description:</label>
+                <textarea id="link-description" rows="3"></textarea>
+            </div>
+            <button id="submit-link">Submit</button>
+        </div>
+    </div>
+    
+    <script type="text/python">
+from browser import document, window, html, alert
+import datetime
+import json
+
+# Global variable to store links
+links = []
+
+# Initialize data structure
+def init_data():
+    global links
+    
+    # Try to load from localStorage
+    stored_links = window.localStorage.getItem('alitop_links')
+    
+    if stored_links:
+        links = json.loads(stored_links)
+    else:
+        # Start with an empty list
+        links = []
+        # Save to localStorage
+        window.localStorage.setItem('alitop_links', json.dumps(links))
+    
+    # Set current year
+    document['current-year'].textContent = str(datetime.datetime.now().year)
+    
+    # Display links
+    display_links()
+
+# Save links to storage
+def save_links():
+    global links
+    window.localStorage.setItem('alitop_links', json.dumps(links))
+
+# Display links in the table
+def display_links(filtered_links=None):
+    global links
+    
+    # Use filtered links if provided, otherwise use all links
+    links_to_display = filtered_links if filtered_links is not None else links
+    
+    # Sort links by visit count in descending order (most visited first)
+    sorted_links = sorted(links_to_display, key=lambda x: x.get('visits', 0), reverse=True)
+    
+    # Clear the table
+    table = document['links-table']
+    table.innerHTML = ""
+    
+    # Add links to the table
+    for link in sorted_links:
+        row = html.TR()
+        
+        # Title and URL with link ID as data attribute
+        title_cell = html.TD()
+        link_a = html.A(link['title'], href=link['url'], target="_blank")
+        link_a.attrs['data-id'] = link['id']
+        title_cell <= link_a
+        
+        # Description
+        desc_cell = html.TD()
+        if 'description' in link and link['description']:
+            desc_cell <= html.SPAN(link['description'])
+        
+        # Visit count
+        visit_count = link.get('visits', 0)
+        visit_text = f"{visit_count} visits"
+        visit_cell = html.TD(visit_text, Class="visit-count")
+        
+        row <= title_cell
+        row <= desc_cell
+        row <= visit_cell
+        table <= row
+
+# Handle link click to increment visit count
+def handle_link_click(event):
+    # Prevent default to handle the click ourselves
+    event.preventDefault()
+    
+    # Get the link ID from the data attribute
+    link_id = int(event.currentTarget.attrs['data-id'])
+    
+    # Find the link and increment its visit count
+    global links
+    for link in links:
+        if link['id'] == link_id:
+            link['visits'] = link.get('visits', 0) + 1
+            break
+    
+    # Save and redisplay
+    save_links()
+    display_links()
+    
+    # Open the link in a new tab
+    window.open(event.currentTarget.href, '_blank')
+
+# Search functionality
+def search_links(event):
+    search_term = document['search-input'].value.lower()
+    
+    if not search_term:
+        display_links()  # Show all links if search term is empty
+        return
+    
+    # Filter links based on search term
+    global links
+    filtered = []
+    
+    for link in links:
+        if (search_term in link['title'].lower() or 
+            search_term in link['url'].lower() or 
+            (link.get('description', '') and search_term in link['description'].lower())):
+            filtered.append(link)
+    
+    display_links(filtered)
+
+# Show the modal for adding a new link
+def show_modal(event):
+    document['add-link-modal'].style.display = 'block'
+
+# Hide the modal
+def hide_modal(event):
+    document['add-link-modal'].style.display = 'none'
+
+# Add a new link
+def add_link(event):
+    title = document['link-title'].value
+    url = document['link-url'].value
+    description = document['link-description'].value
+    
+    if not title or not url:
+        alert("Title and URL are required!")
+        return
+    
+    # Add http:// if missing
+    if not url.startswith('http://') and not url.startswith('https://'):
+        url = 'https://' + url
+    
+    # Generate a new ID
+    global links
+    new_id = 1
+    if links:
+        new_id = max(link['id'] for link in links) + 1
+    
+    # Create new link object
+    new_link = {
+        "id": new_id,
+        "title": title,
+        "url": url,
+        "description": description,
+        "timestamp": str(datetime.datetime.now()),
+        "visits": 0
+    }
+    
+    # Add to links array
+    links.append(new_link)
+    
+    # Save and redisplay
+    save_links()
+    display_links()
+    
+    # Clear form and hide modal
+    document['link-title'].value = ''
+    document['link-url'].value = ''
+    document['link-description'].value = ''
+    hide_modal(None)
+
+# Handle enter key in search box
+def handle_search_keyup(event):
+    if event.keyCode == 13:  # Enter key
+        search_links(event)
+
+# Bind events
+def bind_events():
+    # Link submission
+    document['upload-link'].bind('click', show_modal)
+    document['close-modal'].bind('click', hide_modal)
+    document['submit-link'].bind('click', add_link)
+    
+    # Search
+    document['search-button'].bind('click', search_links)
+    document['search-input'].bind('keyup', handle_search_keyup)
+    
+    # Bind click events to all links
+    for link_a in document.select('a[data-id]'):
+        link_a.bind('click', handle_link_click)
+
+# Initialize the application
+def init():
+    init_data()
+    bind_events()
+
+# Start the application
+init()
+    </script>
+</body>
+</html>
