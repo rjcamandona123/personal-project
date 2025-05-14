@@ -4,9 +4,23 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Alitop - Most Visited Websites</title>
+    <link rel="icon" href="https://i.ibb.co/BHmbZzYn/Screenshot-2025-05-14-211837-removebg-preview.png" type="image/png">
     <!-- Include Brython -->
     <script src="https://cdn.jsdelivr.net/npm/brython@3.10.5/brython.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/brython@3.10.5/brython_stdlib.js"></script>
+    <!-- Local script for IP address management -->
+    <script>
+        // Function to handle IP address management locally
+        document.addEventListener("DOMContentLoaded", function() {
+            // Automatically set a default IP (127.0.0.1) to enable edit access
+            // This simulates IP-based authentication for local testing
+            localStorage.setItem('user_ip_address', '127.0.0.1');
+            
+            // Dispatch event for Brython to handle
+            const ipEvent = new CustomEvent('ip-detected', { detail: '127.0.0.1' });
+            document.dispatchEvent(ipEvent);
+        });
+    </script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -104,16 +118,34 @@
         #search-button:hover {
             background-color: #d9d9d9; /* Slightly darker on hover */
         }
+        /* Style for edit and remove buttons */
+        .edit-button {
+            background-color: #2196F3;
+            margin-left: 5px;
+            display: none; /* Hidden by default */
+        }
+        .edit-button:hover {
+            background-color: #0b7dda;
+        }
+        .remove-button {
+            background-color: #f44336;
+            margin-left: 5px;
+            display: none; /* Hidden by default */
+        }
+        .remove-button:hover {
+            background-color: #d32f2f;
+        }
     </style>
 </head>
 <body onload="brython()">
     <div class="header">
-        <h1>Alitop.com</h1>
+        <h1>Alitop.42web.io</h1>
         <div class="search-bar">
             <input type="text" id="search-input" placeholder="Search term">
             <button id="search-button" style="background-color: #e6e6e6; color: #333;">Search</button>
             <div style="width: 100%; text-align: right;">
                 <a href="#" id="upload-link">Upload link</a>
+                <span id="ip-status" style="display: block; margin-top: 5px; font-size: 0.8em; color: #999;"></span>
             </div>
         </div>
     </div>
@@ -145,13 +177,46 @@
         </div>
     </div>
     
+    <!-- Modal for editing existing links -->
+    <div id="edit-link-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" id="close-edit-modal">&times;</span>
+            <h2>Edit Link</h2>
+            <div class="form-group">
+                <label for="edit-link-title">Title:</label>
+                <input type="text" id="edit-link-title" required>
+            </div>
+            <div class="form-group">
+                <label for="edit-link-url">URL:</label>
+                <input type="url" id="edit-link-url" required>
+            </div>
+            <div class="form-group">
+                <label for="edit-link-description">Description:</label>
+                <textarea id="edit-link-description" rows="3"></textarea>
+            </div>
+            <input type="hidden" id="edit-link-id">
+            <button id="update-link">Update</button>
+        </div>
+    </div>
+    
     <script type="text/python">
-from browser import document, window, html, alert
+from browser import document, window, html, alert, bind
 import datetime
 import json
 
 # Global variable to store links
 links = []
+
+# List of allowed IP addresses for editing
+allowed_ips = [
+    "127.0.0.1",           # localhost
+    "192.168.1.1",          # common local IP
+    "192.168.0.1",          # common local IP
+    # Add more IPs as needed
+]
+
+# Variable to track if current user has edit permission
+has_edit_permission = False
 
 # Initialize data structure
 def init_data():
@@ -179,9 +244,29 @@ def save_links():
     global links
     window.localStorage.setItem('alitop_links', json.dumps(links))
 
+# Check if user's IP is allowed for editing
+def check_ip_permission():
+    global has_edit_permission
+    user_ip = window.localStorage.getItem('user_ip_address')
+    
+    if user_ip in allowed_ips:
+        has_edit_permission = True
+        document['ip-status'].textContent = "Edit access granted"
+    else:
+        has_edit_permission = False
+        document['ip-status'].textContent = "View only access"
+    
+    # Refresh display to show/hide edit buttons
+    display_links()
+
+# Handle IP detection event
+@bind(document, "ip-detected")
+def handle_ip_detected(event):
+    check_ip_permission()
+
 # Display links in the table
 def display_links(filtered_links=None):
-    global links
+    global links, has_edit_permission
     
     # Use filtered links if provided, otherwise use all links
     links_to_display = filtered_links if filtered_links is not None else links
@@ -213,10 +298,106 @@ def display_links(filtered_links=None):
         visit_text = f"{visit_count} visits"
         visit_cell = html.TD(visit_text, Class="visit-count")
         
+        # Add edit and remove buttons if user has permission
+        if has_edit_permission:
+            # Edit button
+            edit_btn = html.BUTTON("Edit", Class="edit-button")
+            edit_btn.attrs['data-id'] = link['id']
+            edit_btn.style.display = "inline-block"
+            edit_btn.bind('click', show_edit_modal)
+            visit_cell <= edit_btn
+            
+            # Remove button
+            remove_btn = html.BUTTON("Remove", Class="remove-button")
+            remove_btn.attrs['data-id'] = link['id']
+            remove_btn.style.display = "inline-block"
+            remove_btn.bind('click', remove_link)
+            visit_cell <= remove_btn
+        
         row <= title_cell
         row <= desc_cell
         row <= visit_cell
         table <= row
+
+# Remove a link
+def remove_link(event):
+    link_id = int(event.currentTarget.attrs['data-id'])
+    
+    # Confirm deletion
+    if not window.confirm(f"Are you sure you want to remove this link?"):
+        return
+    
+    # Find and remove the link from the array
+    global links
+    for i, link in enumerate(links):
+        if link['id'] == link_id:
+            # Remove from array
+            links.pop(i)
+            break
+    
+    # Save and redisplay
+    save_links()
+    display_links()
+
+# Show edit modal with link data
+def show_edit_modal(event):
+    link_id = int(event.currentTarget.attrs['data-id'])
+    
+    # Find the link by ID
+    global links
+    link_to_edit = None
+    for link in links:
+        if link['id'] == link_id:
+            link_to_edit = link
+            break
+    
+    if not link_to_edit:
+        alert("Link not found!")
+        return
+    
+    # Populate form fields
+    document['edit-link-title'].value = link_to_edit['title']
+    document['edit-link-url'].value = link_to_edit['url']
+    document['edit-link-description'].value = link_to_edit.get('description', '')
+    document['edit-link-id'].value = str(link_id)
+    
+    # Show the modal
+    document['edit-link-modal'].style.display = 'block'
+
+# Hide edit modal
+def hide_edit_modal(event):
+    document['edit-link-modal'].style.display = 'none'
+
+# Update link details
+def update_link(event):
+    link_id = int(document['edit-link-id'].value)
+    title = document['edit-link-title'].value
+    url = document['edit-link-url'].value
+    description = document['edit-link-description'].value
+    
+    if not title or not url:
+        alert("Title and URL are required!")
+        return
+    
+    # Add http:// if missing
+    if not url.startswith('http://') and not url.startswith('https://'):
+        url = 'https://' + url
+    
+    # Find and update the link
+    global links
+    for link in links:
+        if link['id'] == link_id:
+            link['title'] = title
+            link['url'] = url
+            link['description'] = description
+            break
+    
+    # Save and redisplay
+    save_links()
+    display_links()
+    
+    # Hide the modal
+    hide_edit_modal(None)
 
 # Handle link click to increment visit count
 def handle_link_click(event):
@@ -316,12 +497,35 @@ def handle_search_keyup(event):
     if event.keyCode == 13:  # Enter key
         search_links(event)
 
+# Set user's IP address from input field
+def set_ip_address(event):
+    ip = document['ip-input'].value.strip()
+    if not ip:
+        alert("Please enter an IP address")
+        return
+    
+    # Store IP in localStorage
+    window.localStorage.setItem('user_ip_address', ip)
+    
+    # Trigger permissions check
+    check_ip_permission()
+    
+    # Provide feedback
+    alert(f"IP address set to: {ip}")
+
 # Bind events
 def bind_events():
     # Link submission
     document['upload-link'].bind('click', show_modal)
     document['close-modal'].bind('click', hide_modal)
     document['submit-link'].bind('click', add_link)
+    
+    # Edit modal
+    document['close-edit-modal'].bind('click', hide_edit_modal)
+    document['update-link'].bind('click', update_link)
+    
+    # IP address setting - We don't need this anymore since the IP is set automatically
+    # document['set-ip-btn'].bind('click', set_ip_address)
     
     # Search
     document['search-button'].bind('click', search_links)
@@ -335,6 +539,11 @@ def bind_events():
 def init():
     init_data()
     bind_events()
+    
+    # Check IP permission from localStorage (in case it was already set)
+    user_ip = window.localStorage.getItem('user_ip_address')
+    if user_ip:
+        check_ip_permission()
 
 # Start the application
 init()
