@@ -1,0 +1,5 @@
+{
+  "name": "MusicShare",
+  "description": "A React application designed to replicate a peer-to-peer music sharing platform UI. It features navigation, a music collection display, and a search interface.",
+  "requestFramePermissions": []
+}
